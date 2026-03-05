@@ -8,6 +8,69 @@ Simple Spring Cloud sample for interview practice:
 - MySQL persistence
 - Kafka event-driven workflow for order and inventory
 
+## Interview Focus (3 Key Concepts)
+
+### 1) Multithreading / Thread Pool / CompletableFuture
+
+Goal: improve throughput and isolate slow I/O calls (product and inventory checks).
+
+Where in code:
+- `order-service/src/main/java/org/example/com/orderservice/config/AppConfig.java`
+  - `ThreadPoolTaskExecutor` bean (`orderWorkflowExecutor`)
+- `order-service/src/main/java/org/example/com/orderservice/workflow/OrderWorkflowServiceImpl.java`
+  - `CompletableFuture.supplyAsync(...)` for parallel calls
+  - `CompletableFuture.allOf(...).join()` to combine results
+
+Look for:
+- `ThreadPoolTaskExecutor` (Executor abstraction)
+- `CompletableFuture`
+- async orchestration in `/orders/preview`
+
+How to demo:
+- Send 5-20 requests quickly to `POST /orders/preview` (Postman Runner).
+- Show response remains stable while two downstream calls run in parallel.
+- Show thread names from Spring logs (thread pool prefix: `order-workflow-`).
+- Explain backpressure controls in thread pool config:
+  - core/max pool size
+  - queue capacity
+  - rejection policy (real-world tuning point)
+
+### 2) Transactions (DB + application level)
+
+Goal: keep single-service DB updates atomic; cross-service consistency via event-driven workflow.
+
+Where in code:
+- `order-service/src/main/java/org/example/com/orderservice/impl/OrderServiceImpl.java`
+  - `@Transactional` on create/cancel/status updates
+- `inventory-service/src/main/java/org/example/com/inventoryservice/impl/InventoryServiceImpl.java`
+  - `@Transactional` on reserve/release/upsert
+
+How to demo:
+- Create order -> inventory reserves -> order marked `RESERVED`.
+- Cancel order -> inventory released.
+- Force failure (`quantity <= 0`) -> rejected event and order status `REJECTED:*`.
+- Explain: this is service-local transaction + distributed eventual consistency (Saga-like flow through Kafka).
+
+### 3) API Security (Filter + service-level JWT validation)
+
+Goal: gateway-level access control + service-level token validation (defense in depth).
+
+Where in code:
+- `api-gateway/src/main/java/org/example/com/apigateway/filters/AuthenticationFilter.java`
+  - Global filter requiring `role: admin` for protected routes
+- `ai-assistant-service/src/main/java/org/example/com/aiassistantservice/config/SecurityPlatformConfig.java`
+  - JWT secret wiring for shared validator
+- `ai-assistant-service/src/main/java/org/example/com/aiassistantservice/controller/AiAssistantController.java`
+  - validates `Authorization: Bearer ...` via `JwtTokenValidator`
+- `user-service/src/main/java/org/example/com/userservice/config/JwtAuthenticationFilter.java`
+  - `OncePerRequestFilter` in service filter chain
+
+How to demo:
+- No `role` header -> gateway returns `401`.
+- Missing/invalid JWT on `/ai/assist` -> service returns `401`.
+- Valid `role` + valid JWT -> `200`.
+- Explain why gateway-only security is insufficient without service-level checks.
+
 ## Quick Start (Docker)
 
 From this folder:
